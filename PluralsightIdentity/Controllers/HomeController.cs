@@ -13,13 +13,11 @@ namespace PluralsightIdentity.Controllers
     {
         private readonly UserManager<PluralsightUser> _userManager;
         private readonly IUserClaimsPrincipalFactory<PluralsightUser> _claimsPrincipalFactory;
-        private readonly SignInManager<PluralsightUser> _signInManager;
 
-        public HomeController(UserManager<PluralsightUser> userManager, IUserClaimsPrincipalFactory<PluralsightUser> claimsPrincipalFactory, SignInManager<PluralsightUser> signInManager)
+        public HomeController(UserManager<PluralsightUser> userManager, IUserClaimsPrincipalFactory<PluralsightUser> claimsPrincipalFactory)
         {
             _userManager = userManager;
             _claimsPrincipalFactory = claimsPrincipalFactory;
-            _signInManager = signInManager;
         }
 
         public IActionResult Index()
@@ -97,9 +95,13 @@ namespace PluralsightIdentity.Controllers
         {
             if (ModelState.IsValid)
             {
-                var signInResult = await _signInManager.PasswordSignInAsync(model.UserName, model.Password, false, false);
-                if (signInResult.Succeeded)
+                var user = await _userManager.FindByNameAsync(model.UserName);
+
+                if (user != null && await _userManager.CheckPasswordAsync(user, model.Password))
                 {
+                    var principal = await _claimsPrincipalFactory.CreateAsync(user);
+                    await HttpContext.SignInAsync("Identity.Application", principal);
+
                     if (!string.IsNullOrEmpty(model.ReturnUrl) && Url.IsLocalUrl(model.ReturnUrl))
                     {
                         return Redirect(model.ReturnUrl);
@@ -108,25 +110,73 @@ namespace PluralsightIdentity.Controllers
                     return RedirectToAction("Index");
                 }
 
-                //var user = await _userManager.FindByNameAsync(model.UserName);
-
-                //if (user != null && await _userManager.CheckPasswordAsync(user, model.Password))
-                //{
-                //    var principal = await _claimsPrincipalFactory.CreateAsync(user);
-                //    await HttpContext.SignInAsync("Identity.Application", principal);
-
-                //    if (!string.IsNullOrEmpty(model.ReturnUrl) && Url.IsLocalUrl(model.ReturnUrl))
-                //    {
-                //        return Redirect(model.ReturnUrl);
-                //    }
-
-                //    return RedirectToAction("Index");
-                //}
-
                 ModelState.AddModelError("", "Invalid UserName or Password");
+            }
+
+            return View(model);
+        }
+
+        [HttpGet]
+        public IActionResult ForgotPassword()
+        {
+            return View();
+        }
+
+        [HttpPost]
+        public async Task<IActionResult> ForgotPassword(ForgotPasswordModel model)
+        {
+            if (ModelState.IsValid)
+            {
+                var user = await _userManager.FindByEmailAsync(model.Email);
+                if (user != null)
+                {
+                    var token = await _userManager.GeneratePasswordResetTokenAsync(user);
+                    var resetUrl = Url.Action("ResetPassword", "Home", new { token = token, email = user.Email }, Request.Scheme);
+                    System.IO.File.WriteAllText("resetlink.txt", resetUrl);
+                }
+                else
+                {
+                    // email user and inform them that they do not have an account
+                }
+
+                return View("Success");
             }
 
             return View();
         }
+
+        [HttpGet]
+        public IActionResult ResetPassword(string token, string email)
+        {
+            return View(new ResetPasswordModel { Token = token, Email = email });
+        }
+
+        [HttpPost]
+        public async Task<IActionResult> ResetPassword(ResetPasswordModel model)
+        {
+            if (ModelState.IsValid)
+            {
+                var user = await _userManager.FindByEmailAsync(model.Email);
+                if (user != null)
+                {
+                    var result = await _userManager.ResetPasswordAsync(user, model.Token, model.Password);
+
+                    if (!result.Succeeded)
+                    {
+                        foreach (var error in result.Errors)
+                        {
+                            ModelState.AddModelError("", error.Description);
+                        }
+                    }
+
+                    return View("Success");
+                }
+
+                ModelState.AddModelError("", "Invalid Request");
+            }
+
+            return View();
+        }
+
     }
 }

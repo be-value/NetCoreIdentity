@@ -1,5 +1,3 @@
-using System;
-
 namespace PluralsightIdentity.Models
 {
     public class ErrorViewModel

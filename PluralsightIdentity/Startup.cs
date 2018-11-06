@@ -1,11 +1,11 @@
-﻿using System.Reflection;
+﻿using System;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Identity;
-using Microsoft.AspNetCore.Identity.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
+using System.Reflection;
 
 namespace PluralsightIdentity
 {
@@ -29,8 +29,13 @@ namespace PluralsightIdentity
             services.AddDbContext<PluralsightUserDbContext>(opt => opt.UseSqlServer(connectionString,sql => sql.MigrationsAssembly(migrationAssembly)));
 
             services.AddIdentity<PluralsightUser, IdentityRole>(options => { })
-                .AddEntityFrameworkStores<PluralsightUserDbContext>();
+                .AddEntityFrameworkStores<PluralsightUserDbContext>()
+                .AddDefaultTokenProviders();
+
             services.AddScoped<IUserClaimsPrincipalFactory<PluralsightUser>, PluralsightUserClaimsPrincipalFactory>();
+
+            services.Configure<DataProtectionTokenProviderOptions>(options =>
+                options.TokenLifespan = TimeSpan.FromHours(3));
 
             services.ConfigureApplicationCookie(options => options.LoginPath = @"/Home/Login");
         }
