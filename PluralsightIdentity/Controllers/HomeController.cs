@@ -1,6 +1,5 @@
 ﻿using System;
 using System.Diagnostics;
-using System.Security.Claims;
 using System.Threading.Tasks;
 using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Authorization;
@@ -13,10 +12,14 @@ namespace PluralsightIdentity.Controllers
     public class HomeController : Controller
     {
         private readonly UserManager<PluralsightUser> _userManager;
+        private readonly IUserClaimsPrincipalFactory<PluralsightUser> _claimsPrincipalFactory;
+        private readonly SignInManager<PluralsightUser> _signInManager;
 
-        public HomeController(UserManager<PluralsightUser> userManager)
+        public HomeController(UserManager<PluralsightUser> userManager, IUserClaimsPrincipalFactory<PluralsightUser> claimsPrincipalFactory, SignInManager<PluralsightUser> signInManager)
         {
             _userManager = userManager;
+            _claimsPrincipalFactory = claimsPrincipalFactory;
+            _signInManager = signInManager;
         }
 
         public IActionResult Index()
@@ -94,16 +97,9 @@ namespace PluralsightIdentity.Controllers
         {
             if (ModelState.IsValid)
             {
-                var user = await _userManager.FindByNameAsync(model.UserName);
-
-                if (user != null && await _userManager.CheckPasswordAsync(user, model.Password))
+                var signInResult = await _signInManager.PasswordSignInAsync(model.UserName, model.Password, false, false);
+                if (signInResult.Succeeded)
                 {
-                    var identity = new ClaimsIdentity("cookies");
-                    identity.AddClaim(new Claim(ClaimTypes.NameIdentifier, user.Id));
-                    identity.AddClaim(new Claim(ClaimTypes.Name, user.UserName));
-
-                    await HttpContext.SignInAsync("cookies", new ClaimsPrincipal(identity));
-
                     if (!string.IsNullOrEmpty(model.ReturnUrl) && Url.IsLocalUrl(model.ReturnUrl))
                     {
                         return Redirect(model.ReturnUrl);
@@ -111,6 +107,21 @@ namespace PluralsightIdentity.Controllers
 
                     return RedirectToAction("Index");
                 }
+
+                //var user = await _userManager.FindByNameAsync(model.UserName);
+
+                //if (user != null && await _userManager.CheckPasswordAsync(user, model.Password))
+                //{
+                //    var principal = await _claimsPrincipalFactory.CreateAsync(user);
+                //    await HttpContext.SignInAsync("Identity.Application", principal);
+
+                //    if (!string.IsNullOrEmpty(model.ReturnUrl) && Url.IsLocalUrl(model.ReturnUrl))
+                //    {
+                //        return Redirect(model.ReturnUrl);
+                //    }
+
+                //    return RedirectToAction("Index");
+                //}
 
                 ModelState.AddModelError("", "Invalid UserName or Password");
             }
