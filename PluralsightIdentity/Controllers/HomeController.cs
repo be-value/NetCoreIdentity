@@ -70,16 +70,43 @@ namespace PluralsightIdentity.Controllers
                     user = new PluralsightUser
                     {
                         Id = Guid.NewGuid().ToString(),
-                        UserName = model.UserName
+                        UserName = model.UserName,
+                        Email = model.UserName
                     };
 
-                    await _userManager.CreateAsync(user, model.Password);
+                    var result = await _userManager.CreateAsync(user, model.Password);
+
+                    if (result.Succeeded)
+                    {
+                        var token = await _userManager.GenerateEmailConfirmationTokenAsync(user);
+                        var confirmationEmail = Url.Action("ConfirmEmailAddress", "Home",
+                            new {token = token, email = user.Email}, Request.Scheme);
+                        System.IO.File.WriteAllText("confirmationEmailLink.txt", confirmationEmail);
+                    }
                 }
 
                 return View("Success");
             }
 
             return View();
+        }
+
+        [HttpGet]
+        public async Task<IActionResult> ConfirmEmailAddress(string token, string email)
+        {
+            var user = await _userManager.FindByEmailAsync(email);
+
+            if (user != null)
+            {
+                var result = await _userManager.ConfirmEmailAsync(user, token);
+
+                if (result.Succeeded)
+                {
+                    return View("Success");
+                }
+            }
+
+            return View("Error");
         }
 
         [HttpGet]
@@ -99,6 +126,12 @@ namespace PluralsightIdentity.Controllers
 
                 if (user != null && await _userManager.CheckPasswordAsync(user, model.Password))
                 {
+                    if (!await _userManager.IsEmailConfirmedAsync(user))
+                    {
+                        ModelState.AddModelError("", "Email is not confirmed");
+                        return View(model);
+                    }
+
                     var principal = await _claimsPrincipalFactory.CreateAsync(user);
                     await HttpContext.SignInAsync("Identity.Application", principal);
 

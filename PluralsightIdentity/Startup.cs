@@ -28,14 +28,21 @@ namespace PluralsightIdentity
             var migrationAssembly = typeof(Startup).GetTypeInfo().Assembly.GetName().Name;
             services.AddDbContext<PluralsightUserDbContext>(opt => opt.UseSqlServer(connectionString,sql => sql.MigrationsAssembly(migrationAssembly)));
 
-            services.AddIdentity<PluralsightUser, IdentityRole>(options => { })
+            services.AddIdentity<PluralsightUser, IdentityRole>(options =>
+                {
+                    // options.SignIn.RequireConfirmedEmail = true
+                    options.Tokens.EmailConfirmationTokenProvider = "emailconf";
+                })
                 .AddEntityFrameworkStores<PluralsightUserDbContext>()
-                .AddDefaultTokenProviders();
+                .AddDefaultTokenProviders()
+                .AddTokenProvider<EmailConfirmationTokenProvider<PluralsightUser>>("emailconf");
 
             services.AddScoped<IUserClaimsPrincipalFactory<PluralsightUser>, PluralsightUserClaimsPrincipalFactory>();
 
             services.Configure<DataProtectionTokenProviderOptions>(options =>
                 options.TokenLifespan = TimeSpan.FromHours(3));
+            services.Configure<EmailConfirmationTokenProviderOptions>(options =>
+                options.TokenLifespan = TimeSpan.FromDays(2));
 
             services.ConfigureApplicationCookie(options => options.LoginPath = @"/Home/Login");
         }
