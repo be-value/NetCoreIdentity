@@ -83,6 +83,15 @@ namespace PluralsightIdentity.Controllers
                             new {token = token, email = user.Email}, Request.Scheme);
                         System.IO.File.WriteAllText("confirmationEmailLink.txt", confirmationEmail);
                     }
+                    else
+                    {
+                        foreach (var error in result.Errors)
+                        {
+                            ModelState.AddModelError("", error.Description);
+                        }
+
+                        return View();
+                    }
                 }
 
                 return View("Success");

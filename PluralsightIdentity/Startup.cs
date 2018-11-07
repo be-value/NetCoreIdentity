@@ -32,10 +32,16 @@ namespace PluralsightIdentity
                 {
                     // options.SignIn.RequireConfirmedEmail = true
                     options.Tokens.EmailConfirmationTokenProvider = "emailconf";
+
+                    options.Password.RequireNonAlphanumeric = false;
+                    options.Password.RequiredUniqueChars = 4;
+
+                    options.User.RequireUniqueEmail = true;
                 })
                 .AddEntityFrameworkStores<PluralsightUserDbContext>()
                 .AddDefaultTokenProviders()
-                .AddTokenProvider<EmailConfirmationTokenProvider<PluralsightUser>>("emailconf");
+                .AddTokenProvider<EmailConfirmationTokenProvider<PluralsightUser>>("emailconf")
+                .AddPasswordValidator<DoesNotContainPasswordValidator<PluralsightUser>>();
 
             services.AddScoped<IUserClaimsPrincipalFactory<PluralsightUser>, PluralsightUserClaimsPrincipalFactory>();
 
