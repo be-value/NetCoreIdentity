@@ -133,23 +133,44 @@ namespace PluralsightIdentity.Controllers
             {
                 var user = await _userManager.FindByNameAsync(model.UserName);
 
-                if (user != null && await _userManager.CheckPasswordAsync(user, model.Password))
+                // Check for lockout BEFORE checking the password
+                if (user != null && !await _userManager.IsLockedOutAsync(user))
                 {
-                    if (!await _userManager.IsEmailConfirmedAsync(user))
+                    // no lockout, check password
+                    if (await _userManager.CheckPasswordAsync(user, model.Password))
                     {
-                        ModelState.AddModelError("", "Email is not confirmed");
-                        return View(model);
+                        if (!await _userManager.IsEmailConfirmedAsync(user))
+                        {
+                            ModelState.AddModelError("", "Email is not confirmed");
+                            return View(model);
+                        }
+
+                        // password correct, reset access failed count for this user
+                        var result = await _userManager.ResetAccessFailedCountAsync(user);
+
+                        // authenticate!
+                        var principal = await _claimsPrincipalFactory.CreateAsync(user);
+                        await HttpContext.SignInAsync("Identity.Application", principal);
+
+                        // return to previously requested page
+                        if (!string.IsNullOrEmpty(model.ReturnUrl) && Url.IsLocalUrl(model.ReturnUrl))
+                        {
+                            return Redirect(model.ReturnUrl);
+                        }
+
+                        return RedirectToAction("Index");
                     }
-
-                    var principal = await _claimsPrincipalFactory.CreateAsync(user);
-                    await HttpContext.SignInAsync("Identity.Application", principal);
-
-                    if (!string.IsNullOrEmpty(model.ReturnUrl) && Url.IsLocalUrl(model.ReturnUrl))
+                    else
                     {
-                        return Redirect(model.ReturnUrl);
-                    }
+                        // password incorrect, increase access failed count for this user
+                        var result = await _userManager.AccessFailedAsync(user);
 
-                    return RedirectToAction("Index");
+                        // to prevent brute force attacks, inform the user that he/she is locked out
+                        if (await _userManager.IsLockedOutAsync(user))
+                        {
+                            // Send email to the user, notifying them of the lockout
+                        }
+                    }
                 }
 
                 ModelState.AddModelError("", "Invalid UserName or Password");
@@ -209,6 +230,12 @@ namespace PluralsightIdentity.Controllers
                         {
                             ModelState.AddModelError("", error.Description);
                         }
+                    }
+
+                    if (await _userManager.IsLockedOutAsync(user))
+                    {
+                        // revoke lockout by setting the end date to now - the user is now able to login again with its new password
+                        await _userManager.SetLockoutEndDateAsync(user, DateTimeOffset.UtcNow);
                     }
 
                     return View("Success");

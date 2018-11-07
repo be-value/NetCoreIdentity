@@ -32,11 +32,15 @@ namespace PluralsightIdentity
                 {
                     // options.SignIn.RequireConfirmedEmail = true
                     options.Tokens.EmailConfirmationTokenProvider = "emailconf";
-
+                    // password options
                     options.Password.RequireNonAlphanumeric = false;
                     options.Password.RequiredUniqueChars = 4;
-
+                    // user options
                     options.User.RequireUniqueEmail = true;
+                    // user lockout options
+                    options.Lockout.AllowedForNewUsers = true;
+                    options.Lockout.MaxFailedAccessAttempts = 3;
+                    options.Lockout.DefaultLockoutTimeSpan = TimeSpan.FromMinutes(1);
                 })
                 .AddEntityFrameworkStores<PluralsightUserDbContext>()
                 .AddDefaultTokenProviders()
