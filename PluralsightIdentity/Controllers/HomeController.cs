@@ -162,18 +162,24 @@ namespace PluralsightIdentity.Controllers
 
                             if (validProviders.Contains(_userManager.Options.Tokens.AuthenticatorTokenProvider))
                             {
-                                await HttpContext.SignInAsync(IdentityConstants.TwoFactorUserIdScheme,
-                                    Store2FA(user.Id, _userManager.Options.Tokens.AuthenticatorTokenProvider));
-                                return RedirectToAction("TwoFactor");
+                                if (!await TwoFactorRememberMe(user.Id))
+                                {
+                                    await HttpContext.SignInAsync(IdentityConstants.TwoFactorUserIdScheme,
+                                        Store2FA(user.Id, _userManager.Options.Tokens.AuthenticatorTokenProvider, IdentityConstants.TwoFactorUserIdScheme));
+                                    return RedirectToAction("TwoFactor");
+                                }
                             }
-
-                            if (validProviders.Contains("Email"))
+                            else
                             {
-                                var token = await _userManager.GenerateTwoFactorTokenAsync(user, "Email");
-                                System.IO.File.WriteAllText("email2sv.txt", token);
+                                if (validProviders.Contains("Email"))
+                                {
+                                    var token = await _userManager.GenerateTwoFactorTokenAsync(user, "Email");
+                                    System.IO.File.WriteAllText("email2sv.txt", token);
 
-                                await HttpContext.SignInAsync(IdentityConstants.TwoFactorUserIdScheme, Store2FA(user.Id, "Email"));
-                                return RedirectToAction("TwoFactor");
+                                    await HttpContext.SignInAsync(IdentityConstants.TwoFactorUserIdScheme,
+                                        Store2FA(user.Id, "Email", IdentityConstants.TwoFactorUserIdScheme));
+                                    return RedirectToAction("TwoFactor");
+                                }
                             }
                         }
 
@@ -310,7 +316,13 @@ namespace PluralsightIdentity.Controllers
                         await HttpContext.SignOutAsync(IdentityConstants.TwoFactorUserIdScheme);
 
                         var claimsPrincipal = await _claimsPrincipalFactory.CreateAsync(user);
-                        await HttpContext.SignInAsync(IdentityConstants.ApplicationScheme, claimsPrincipal);
+                        var appProps = new AuthenticationProperties {IsPersistent = true};
+
+                        await HttpContext.SignInAsync(IdentityConstants.ApplicationScheme, claimsPrincipal, appProps);
+
+                        var rememberMeProps = new AuthenticationProperties {IsPersistent = true};
+                        var rememberMePrincipal = Store2FA(user.Id, _userManager.Options.Tokens.AuthenticatorTokenProvider, IdentityConstants.TwoFactorRememberMeScheme);
+                        await HttpContext.SignInAsync(IdentityConstants.TwoFactorRememberMeScheme, rememberMePrincipal, rememberMeProps);
 
                         return RedirectToAction("Index");
                     }
@@ -363,15 +375,31 @@ namespace PluralsightIdentity.Controllers
             return View("Success");
         }
 
+        private async Task<bool> TwoFactorRememberMe(string userId)
+        {
+            var result = await HttpContext.AuthenticateAsync(IdentityConstants.TwoFactorRememberMeScheme);
+            if (!result.Succeeded)
+            {
+                return false;
+            }
+
+            var user = await _userManager.FindByIdAsync(result.Principal.FindFirstValue("sub"));
+            if (user == null)
+            {
+                return false;
+            }
+
+            return user.Id == userId;
+        }
 
         // ReSharper disable once InconsistentNaming
-        private static ClaimsPrincipal Store2FA(string userId, string provider)
+        private static ClaimsPrincipal Store2FA(string userId, string provider, string scheme)
         {
             var identity = new ClaimsIdentity(new List<Claim>
             {
                 new Claim("sub", userId),
                 new Claim("amr", provider)
-            }, IdentityConstants.TwoFactorUserIdScheme);
+            }, scheme);
 
             return new ClaimsPrincipal(identity);
         }

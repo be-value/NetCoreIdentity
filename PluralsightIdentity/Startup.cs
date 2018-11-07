@@ -6,6 +6,7 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using System.Reflection;
+using Microsoft.AspNetCore.Authentication.Cookies;
 
 namespace PluralsightIdentity
 {
@@ -26,7 +27,7 @@ namespace PluralsightIdentity
             var connectionString =
                 @"Data Source=(localdb)\MSSQLLocalDB;Initial Catalog=PluralsightUserIdentities;Integrated Security=True;Connect Timeout=30;Encrypt=False;TrustServerCertificate=False;ApplicationIntent=ReadWrite;MultiSubnetFailover=False";
             var migrationAssembly = typeof(Startup).GetTypeInfo().Assembly.GetName().Name;
-            services.AddDbContext<PluralsightUserDbContext>(opt => opt.UseSqlServer(connectionString,sql => sql.MigrationsAssembly(migrationAssembly)));
+            services.AddDbContext<PluralsightUserDbContext>(opt => opt.UseSqlServer(connectionString, sql => sql.MigrationsAssembly(migrationAssembly)));
 
             services.AddIdentity<PluralsightUser, IdentityRole>(options =>
                 {
@@ -54,7 +55,18 @@ namespace PluralsightIdentity
             services.Configure<EmailConfirmationTokenProviderOptions>(options =>
                 options.TokenLifespan = TimeSpan.FromDays(2));
 
-            services.ConfigureApplicationCookie(options => options.LoginPath = @"/Home/Login");
+            services.ConfigureApplicationCookie(options =>
+            {
+                options.LoginPath = @"/Home/Login";
+                options.ExpireTimeSpan = TimeSpan.FromMinutes(4);
+                options.SlidingExpiration = true;
+            });
+
+            services.Configure<CookieAuthenticationOptions>(IdentityConstants.TwoFactorRememberMeScheme, options =>
+            {
+                options.ExpireTimeSpan = TimeSpan.FromMinutes(10);
+                options.SlidingExpiration = false;
+            });
         }
 
         // This method gets called by the runtime. Use this method to configure the HTTP request pipeline.
