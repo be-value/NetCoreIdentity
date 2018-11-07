@@ -1,5 +1,7 @@
 ﻿using System;
+using System.Collections.Generic;
 using System.Diagnostics;
+using System.Security.Claims;
 using System.Threading.Tasks;
 using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Authorization;
@@ -51,6 +53,7 @@ namespace PluralsightIdentity.Controllers
             return View(new ErrorViewModel { RequestId = Activity.Current?.Id ?? HttpContext.TraceIdentifier });
         }
 
+        #region Account Registration
         [HttpGet]
         public IActionResult Register()
         {
@@ -71,7 +74,7 @@ namespace PluralsightIdentity.Controllers
                     {
                         Id = Guid.NewGuid().ToString(),
                         UserName = model.UserName,
-                        Email = model.UserName
+                        Email = model.UserName                        
                     };
 
                     var result = await _userManager.CreateAsync(user, model.Password);
@@ -80,7 +83,7 @@ namespace PluralsightIdentity.Controllers
                     {
                         var token = await _userManager.GenerateEmailConfirmationTokenAsync(user);
                         var confirmationEmail = Url.Action("ConfirmEmailAddress", "Home",
-                            new {token = token, email = user.Email}, Request.Scheme);
+                            new {token, email = user.Email}, Request.Scheme);
                         System.IO.File.WriteAllText("confirmationEmailLink.txt", confirmationEmail);
                     }
                     else
@@ -99,7 +102,9 @@ namespace PluralsightIdentity.Controllers
 
             return View();
         }
+        #endregion
 
+        #region Email confirmation
         [HttpGet]
         public async Task<IActionResult> ConfirmEmailAddress(string token, string email)
         {
@@ -117,7 +122,9 @@ namespace PluralsightIdentity.Controllers
 
             return View("Error");
         }
+        #endregion
 
+        #region login/logout
         [HttpGet]
         public IActionResult Login(string returnUrl = "")
         {
@@ -146,11 +153,26 @@ namespace PluralsightIdentity.Controllers
                         }
 
                         // password correct, reset access failed count for this user
-                        var result = await _userManager.ResetAccessFailedCountAsync(user);
+                        await _userManager.ResetAccessFailedCountAsync(user);
+
+                        // two factor authentication enabled?
+                        if (await _userManager.GetTwoFactorEnabledAsync(user))
+                        {
+                            var validProviders = await _userManager.GetValidTwoFactorProvidersAsync(user);
+
+                            if (validProviders.Contains("Email"))
+                            {
+                                var token = await _userManager.GenerateTwoFactorTokenAsync(user, "Email");
+                                System.IO.File.WriteAllText("email2sv.txt", token);
+
+                                await HttpContext.SignInAsync(IdentityConstants.TwoFactorUserIdScheme, Store2FA(user.Id, "Email"));
+                                return RedirectToAction("TwoFactor");
+                            }
+                        }
 
                         // authenticate!
                         var principal = await _claimsPrincipalFactory.CreateAsync(user);
-                        await HttpContext.SignInAsync("Identity.Application", principal);
+                        await HttpContext.SignInAsync(IdentityConstants.ApplicationScheme, principal);
 
                         // return to previously requested page
                         if (!string.IsNullOrEmpty(model.ReturnUrl) && Url.IsLocalUrl(model.ReturnUrl))
@@ -163,7 +185,7 @@ namespace PluralsightIdentity.Controllers
                     else
                     {
                         // password incorrect, increase access failed count for this user
-                        var result = await _userManager.AccessFailedAsync(user);
+                        await _userManager.AccessFailedAsync(user);
 
                         // to prevent brute force attacks, inform the user that he/she is locked out
                         if (await _userManager.IsLockedOutAsync(user))
@@ -178,7 +200,9 @@ namespace PluralsightIdentity.Controllers
 
             return View(model);
         }
+        #endregion
 
+        #region Forgot/Reset password
         [HttpGet]
         public IActionResult ForgotPassword()
         {
@@ -194,7 +218,7 @@ namespace PluralsightIdentity.Controllers
                 if (user != null)
                 {
                     var token = await _userManager.GeneratePasswordResetTokenAsync(user);
-                    var resetUrl = Url.Action("ResetPassword", "Home", new { token = token, email = user.Email }, Request.Scheme);
+                    var resetUrl = Url.Action("ResetPassword", "Home", new {token, email = user.Email }, Request.Scheme);
                     System.IO.File.WriteAllText("resetlink.txt", resetUrl);
                 }
                 else
@@ -246,6 +270,66 @@ namespace PluralsightIdentity.Controllers
 
             return View();
         }
+        #endregion
 
+        #region Two Factor Authentication
+
+        [HttpGet]
+        public IActionResult TwoFactor()
+        {
+            return View();
+        }
+
+        [HttpPost]
+        public async Task<IActionResult> TwoFactor(TwoFactorModel model)
+        {
+            var result = await HttpContext.AuthenticateAsync(IdentityConstants.TwoFactorUserIdScheme);
+            if (!result.Succeeded)
+            {
+                ModelState.AddModelError("", "Your login request has expired, please start over.");
+                return View();
+            }
+
+            if (ModelState.IsValid)
+            {
+                var user = await _userManager.FindByIdAsync(result.Principal.FindFirstValue("sub"));
+
+                if (user != null)
+                {
+                    var isValid = await _userManager.VerifyTwoFactorTokenAsync(user,
+                        result.Principal.FindFirstValue("amr"), model.Token);
+
+                    if (isValid)
+                    {
+                        await HttpContext.SignOutAsync(IdentityConstants.TwoFactorUserIdScheme);
+
+                        var claimsPrincipal = await _claimsPrincipalFactory.CreateAsync(user);
+                        await HttpContext.SignInAsync(IdentityConstants.ApplicationScheme, claimsPrincipal);
+
+                        return RedirectToAction("Index");
+                    }
+
+                    ModelState.AddModelError("", "Invalid token");
+                    return View();
+                }
+
+                ModelState.AddModelError("", "Invalid Request");
+            }
+
+            return View();
+        }
+
+        // ReSharper disable once InconsistentNaming
+        private static ClaimsPrincipal Store2FA(string userId, string provider)
+        {
+            var identity = new ClaimsIdentity(new List<Claim>
+            {
+                new Claim("sub", userId),
+                new Claim("amr", provider)
+            }, IdentityConstants.TwoFactorUserIdScheme);
+
+            return new ClaimsPrincipal(identity);
+        }
+        #endregion
     }
 }
