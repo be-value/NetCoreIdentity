@@ -160,6 +160,13 @@ namespace PluralsightIdentity.Controllers
                         {
                             var validProviders = await _userManager.GetValidTwoFactorProvidersAsync(user);
 
+                            if (validProviders.Contains(_userManager.Options.Tokens.AuthenticatorTokenProvider))
+                            {
+                                await HttpContext.SignInAsync(IdentityConstants.TwoFactorUserIdScheme,
+                                    Store2FA(user.Id, _userManager.Options.Tokens.AuthenticatorTokenProvider));
+                                return RedirectToAction("TwoFactor");
+                            }
+
                             if (validProviders.Contains("Email"))
                             {
                                 var token = await _userManager.GenerateTwoFactorTokenAsync(user, "Email");
@@ -273,7 +280,6 @@ namespace PluralsightIdentity.Controllers
         #endregion
 
         #region Two Factor Authentication
-
         [HttpGet]
         public IActionResult TwoFactor()
         {
@@ -318,6 +324,45 @@ namespace PluralsightIdentity.Controllers
 
             return View();
         }
+
+
+        [HttpGet]
+        [Authorize]
+        public async Task<IActionResult> RegisterAuthenticator()
+        {
+            // Get pluralsight user based on authenticated principal
+            var user = await _userManager.GetUserAsync(User);
+            // Retrieve the authenticator key for this user
+            var authenticatorKey = await _userManager.GetAuthenticatorKeyAsync(user);
+            // if user did not register before, there is no authenticator key, lets create it
+            if (authenticatorKey == null)
+            {
+                await _userManager.ResetAuthenticatorKeyAsync(user);
+                authenticatorKey = await _userManager.GetAuthenticatorKeyAsync(user);
+            }
+
+            return View(new RegisterAuthenticatorModel {AuthenticatorKey = authenticatorKey});
+        }
+
+        [HttpPost]
+        [Authorize]
+        public async Task<IActionResult> RegisterAuthenticator(RegisterAuthenticatorModel model)
+        {
+            var user = await _userManager.GetUserAsync(User);
+            var isValid = await _userManager.VerifyTwoFactorTokenAsync(user,
+                _userManager.Options.Tokens.AuthenticatorTokenProvider, model.Code);
+
+            if (!isValid)
+            {
+                ModelState.AddModelError("", "Code is invalid");
+                return View(model);
+            }
+
+            // now enable two factor authentication for this user because he successfully registered an authenticator
+            await _userManager.SetTwoFactorEnabledAsync(user, true);
+            return View("Success");
+        }
+
 
         // ReSharper disable once InconsistentNaming
         private static ClaimsPrincipal Store2FA(string userId, string provider)
