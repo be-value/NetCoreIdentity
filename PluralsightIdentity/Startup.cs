@@ -69,10 +69,16 @@ namespace PluralsightIdentity
             });
 
             services.AddAuthentication()
+                .AddMicrosoftAccount("microsoft", options =>
+                {
+                    options.ClientId = Configuration["Authentication:Microsoft:ClientId"];
+                    options.ClientSecret = Configuration["Authentication:Microsoft:ClientSecret"];
+                    options.SignInScheme = IdentityConstants.ExternalScheme;
+                })
                 .AddGoogle("google", options =>
                 {
-                    options.ClientId = "320251759259-fluo86dhpdvmt3ib2pslv792foq2fr10.apps.googleusercontent.com";
-                    options.ClientSecret = "mNUD65yoj0MVtXpNdkTigCc6";
+                    options.ClientId = Configuration["Authentication:Google:ClientId"];
+                    options.ClientSecret = Configuration["Authentication:Google:ClientSecret"];
                     options.SignInScheme = IdentityConstants.ExternalScheme;
                 });
         }
