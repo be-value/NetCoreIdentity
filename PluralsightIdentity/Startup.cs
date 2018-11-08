@@ -67,6 +67,14 @@ namespace PluralsightIdentity
                 options.ExpireTimeSpan = TimeSpan.FromMinutes(10);
                 options.SlidingExpiration = false;
             });
+
+            services.AddAuthentication()
+                .AddGoogle("google", options =>
+                {
+                    options.ClientId = "320251759259-fluo86dhpdvmt3ib2pslv792foq2fr10.apps.googleusercontent.com";
+                    options.ClientSecret = "mNUD65yoj0MVtXpNdkTigCc6";
+                    options.SignInScheme = IdentityConstants.ExternalScheme;
+                });
         }
 
         // This method gets called by the runtime. Use this method to configure the HTTP request pipeline.
